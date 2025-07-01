@@ -221,3 +221,230 @@ db.ecommerce.aggregate([
     $unset: ["_id"],
   },
 ]);
+
+// --------------- SORT, LIMIT, FILTER ---------------
+// 1. Top 3 best-selling products by total revenue.
+// (Same as Q4, but sort descending on total_cost and limit 3.)
+
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Second stage: group by product's id and calculate the total revenue
+  {
+    $group: {
+      _id: "$products.prod_id",
+      total_revenue: {
+        $sum: { $multiply: ["$products.price", "$products.quantity"] },
+      },
+    },
+  },
+  // Third stage: sort by total revenue in descending order
+  {
+    $sort: {
+      total_revenue: -1,
+    },
+  },
+  // Fourth stage: only get the top 3 porducts
+  {
+    $limit: 3,
+  },
+  // Fifth stage: Display the customer email
+  {
+    $set: { product_id: "$_id" },
+  },
+  // Sixth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 2. Find customers who spent more than $50000 total.
+// (Group by customer, sum value, filter with $match.)
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Second stage: group by customer id and calculate the total spent by each customer
+  {
+    $group: {
+      _id: "$customer_id",
+      total_spent: {
+        $sum: { $multiply: ["$products.quantity", "$products.price"] },
+      },
+    },
+  },
+  // Third stage: Filter only those customers who spent more than $50000
+  {
+    $match: {
+      total_spent: { $gt: 50000 },
+    },
+  },
+  // Fourth stage: Display the customer email
+  {
+    $set: { customer_email: "$_id" },
+  },
+  // Fifth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 3. List customers who made more than 100 orders.
+// (Group by customer, count orders, $match total_orders > 100.)
+db.ecommerce.aggregate([
+  // First stage: group by customer id and calculate the total number of orders
+  {
+    $group: {
+      _id: "$customer_id",
+      total_orders: { $sum: 1 },
+    },
+    // Second stage: filter and keep only those customers who ordered more than 100 times
+  },
+  {
+    $match: { total_orders: { $gt: 100 } },
+  },
+  // Third stage: Display the customer email
+  {
+    $set: { customer_email: "$_id" },
+  },
+  // Fourth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 4. Top 5 customers by total spending (all time)
+// Unwind → Group by customer → Sum price × quantity → Sort descending → Limit 5
+
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Second stage: group by customer id and calculate the total spent by each customer
+  {
+    $group: {
+      _id: "$customer_id",
+      total_spent: {
+        $sum: { $multiply: ["$products.quantity", "$products.price"] },
+      },
+    },
+  },
+  // Third stage: sort by total spent by each customer in descending order
+  {
+    $sort: {
+      total_spent: -1,
+    },
+  },
+  // Fourth stage: only display the top 5 customers
+  {
+    $limit: 5,
+  },
+  // Fifth stage: Display the customer email
+  {
+    $set: { customer_email: "$_id" },
+  },
+  // Sixth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 5. Top 3 most popular products by quantity sold
+// Unwind → Group by product → Sum quantity → Sort descending → Limit 3
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Second stage: group by product's id and calculate the total quantity sold
+  {
+    $group: {
+      _id: "$products.prod_id",
+      total_quantity: { $sum: "$products.quantity" },
+    },
+  },
+  // Third stage: Filter out those products who were sold more than 5000 times
+  {
+    $match: {
+      total_quantity: { $gt: 5000 },
+    },
+  },
+  // Fourth stage: Display the customer email
+  {
+    $set: { product_id: "$_id" },
+  },
+  // Fifth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 6. Monthly revenue report for 2023
+// Match 2023 → Unwind → Group by month → Sum total revenue
+db.ecommerce.aggregate([
+  // First stage: filtering out the documents which dont lie in the year 2023
+  {
+    $match: {
+      orderdate: {
+        $gte: new Date("2023-01-01T00:00:00Z"),
+        $lt: new Date("2024-01-01T00:00:00Z"),
+      },
+    },
+  },
+  // Second stage: unwinding the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Third stage: group by months of 2023 and calculate the total revenue for each month
+  {
+    $group: {
+      _id: { $month: "$orderdate" },
+      total_revenue: {
+        $sum: { $multiply: ["$products.quantity", "$products.price"] },
+      },
+    },
+  },
+  // Fourth stage: sort by months in ascending order
+  {
+    $sort: {
+      _id: 1,
+    },
+  },
+  // Fifth stage: Display the Months 2023
+  {
+    $set: { Months_2023: "$_id" },
+  },
+  // Sixth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 7. Average number of products per order
+// Project order size (array length) → Group to average it
+
+db.ecommerce.aggregate([
+  {
+    $unwind: {
+      path: "$products",
+    },
+  },
+  {
+    $group: {
+      _id: "$products.prod_id",
+      average_quantity: { $avg: "$products.quantity" },
+    },
+  },
+  // Fifth stage: Display the Months 2023
+  {
+    $set: { product_id: "$_id" },
+  },
+  // Sixth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
