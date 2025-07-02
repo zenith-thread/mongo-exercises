@@ -448,3 +448,169 @@ db.ecommerce.aggregate([
     $unset: ["_id"],
   },
 ]);
+
+// --------------- COMBINATION LOGIC ---------------
+
+// 1. For 2022 orders, list each customer's:
+// first order date
+// number of orders
+// total spent
+// all product names (as array)
+// (Hint: $match → $unwind → $sort → $group → $push name.)
+
+db.ecommerce.aggregate([
+  // First stage: filter the documents within the range of year 2020
+  {
+    $match: {
+      orderdate: {
+        $gte: new Date("2020-01-01T00:00:00Z"),
+        $lt: new Date("2021-01-01T00:00:00Z"),
+      },
+    },
+  },
+  // Second stage: sort by orderdate to be used to extract first order date in grouping stage
+  {
+    $sort: { orderdate: 1 },
+  },
+  // Third stage: unwind the products array
+  {
+    $unwind: { path: "$products" },
+  },
+  // Fourth stage: group by customer id and calculate the first order date, total orders,
+  // total spent by each customer as well as individual order summary array
+  {
+    $group: {
+      _id: "$customer_id",
+      first_order_date: { $first: "$orderdate" },
+      total_orders: { $sum: 1 },
+      total_spent: {
+        $sum: { $multiply: ["$products.price", "$products.quantity"] },
+      },
+      products: {
+        $push: {
+          product_id: "$products.prod_id",
+          product_name: "$products.name",
+          product_price: "$products.price",
+          product_quantity: "$products.quantity",
+          order_date: "$orderdate",
+        },
+      },
+    },
+  },
+  // Fifth stage: sort by first order date, so we have an incremetal visualization
+  {
+    $sort: {
+      first_order_date: 1,
+    },
+  },
+  // Sixth stage: Display the Months 2023
+  {
+    $set: { customer_email: "$_id" },
+  },
+  // Seventh stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 2. Total Unique Products Per Customer (All Time)
+// For each customer, show:
+// customer_email
+// total_unique_products_ordered (no duplicates!)
+// all_product_names (distinct names)
+// Hint: Use $unwind, $group, and $addToSet.
+
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: {
+      path: "$products",
+    },
+  },
+  // Second stage: group by each customer, and calulate total unique products ordered
+  // and all distinct product names
+  {
+    $group: {
+      _id: "$customer_id",
+      all_product_names: {
+        $addToSet: "$products.name",
+      },
+    },
+  },
+  // Fourth stage: Display the customer email and total unique products count
+  {
+    $set: {
+      customer_email: "$_id",
+      total_unique_products_ordered: { $size: "$all_product_names" },
+    },
+  },
+  // Fifth stage: Remove _id from the output
+  {
+    $unset: ["_id"],
+  },
+]);
+
+// 3.Yearly Spending Summary Per Customer
+// Output per customer:
+// customer_email
+// Array of { year, total_spent_in_that_year }
+// Overall total_spent_all_time
+// Hint: Use $unwind, extract year via $year, group by customer and year, then regroup again.
+
+db.ecommerce.aggregate([
+  // First stage: unwind the products array
+  {
+    $unwind: {
+      path: "$products",
+    },
+  },
+  // Second stage: add two new fields. year and product total for that order
+  {
+    $addFields: {
+      year: { $year: "$orderdate" },
+      product_total: { $multiply: ["$products.quantity", "$products.price"] },
+    },
+  },
+  // Third stage: group by customer and year to find the total spent in that year by each customer
+  {
+    $group: {
+      _id: { year: "$year", customer_email: "$customer_id" },
+      total_spent: { $sum: "$product_total" },
+    },
+  },
+  // Fourth stage: regroup by customer and push the yearly spending and total spent by each customer
+  {
+    $group: {
+      _id: "$_id.customer_email",
+      total_spent_in_that_year: {
+        $push: {
+          year: "$_id.year",
+          total_spent: "$total_spent",
+        },
+      },
+      total_spent_all_time: {
+        $sum: "$total_spent",
+      },
+    },
+  },
+  // Fifth stage: sort by year in the total_spent_in_that_year array
+  {
+    $set: {
+      total_spent_in_that_year: {
+        $sortArray: {
+          input: "$total_spent_in_that_year",
+          sortBy: { year: 1 },
+        },
+      },
+    },
+  },
+  // Sixth stage: cleanup and display result
+  {
+    $project: {
+      _id: 0,
+      total_spent_in_that_year: 1,
+      total_spent_all_time: 1,
+      customer_email: "$_id",
+    },
+  },
+]);
